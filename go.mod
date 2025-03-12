@@ -1,4 +1,4 @@
-module ReadPE
+module zesdbg
 
 go 1.24.0
 

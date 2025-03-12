@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-09 23:58:33
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-03-11 14:09:17
+ * @LastEditTime: 2025-03-12 21:45:30
  * @FilePath: \ZesOJ\Disassembly\ReadPE\pe_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -10,13 +10,16 @@
 package readpe
 
 import (
+	"os"
 	"testing"
 	"time"
 )
 
 func TestReadPE(t *testing.T) {
-	filePath := "./test.exe"
-	pe, err := ReadPE(filePath)
+	filePath := "E:/Zesoj/sever/test.exe"
+	file, _ := os.Open(filePath)
+	defer file.Close()
+	pe, err := ReadPE(file)
 	// ntHeaderOffset := int64(pe.DOSHeader.Lfanew)
 	// t.Logf("NT头文件偏移: 0x%X", ntHeaderOffset)
 	if err != nil {
@@ -73,6 +76,10 @@ func printPEInfo(t *testing.T, pe *PEHeader) {
 		t.Logf("入口点地址: 0x%X", oh64.AddressOfEntryPoint)
 		t.Logf("基地址: 0x%X", oh64.ImageBase)
 		t.Logf("子系统: 0x%X (%s)", oh64.Subsystem, subsystemToString(oh64.Subsystem))
+		t.Logf("堆保留大小: 0x%X", oh64.SizeOfHeapReserve)
+		t.Logf("堆提交大小: 0x%X", oh64.SizeOfHeapCommit)
+		t.Logf("栈保留大小: 0x%X", oh64.SizeOfStackReserve)
+		t.Logf("栈提交大小: 0x%X", oh64.SizeOfStackCommit)
 	}
 }
 
