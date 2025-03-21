@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-10 09:07:43
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-03-12 21:42:29
+ * @LastEditTime: 2025-03-21 19:44:51
  * @FilePath: \ZesOJ\Disassembly\ReadPE\entropy.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -11,14 +11,13 @@ package readpe
 
 import (
 	"debug/pe"
-	"fmt"
 	"io"
 	"math"
 	"os"
 )
 
 // GetSectionNames 函数用于返回可执行文件的所有段名称
-func GetSectionNames(file *os.File) ([]string, error) {
+func GetSectionNames(file *os.File) (*[]string, error) {
 
 	// 解析PE文件头
 	peFile, err := pe.NewFile(file)
@@ -33,7 +32,7 @@ func GetSectionNames(file *os.File) ([]string, error) {
 		sectionNames = append(sectionNames, section.Name)
 	}
 
-	return sectionNames, nil
+	return &sectionNames, nil
 }
 
 // 计算熵
@@ -82,27 +81,18 @@ func CalculateEntropy(file *os.File) (float64, error) {
 	return result, nil
 }
 
-/*
-TODO use procexp_judge_pack.cpp
-*/
-// func GetPackedCheck(entropy float64) int {
-
-// }
-
 // 计算各段熵
-func GetsegmentEntropy(filePath string, sectionNames *[]string) (map[string]float64, error) {
-	mp := map[string]float64{
-		".data":  0,
-		".rdata": 0,
-		".text":  0,
-		".bss":   0,
-	}
-	// 打开文件
-	file, err := os.Open(filePath)
+func GetsegmentEntropy(file *os.File) (*map[string]float64, error) {
+	sptr, err := GetSectionNames(file)
+	s := *sptr
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+
+	mp := map[string]float64{}
+	for i := 0; i < len(s); i++ {
+		mp[s[i]] = 0
+	}
 
 	// 解析PE文件头
 	peFile, err := pe.NewFile(file)
@@ -111,41 +101,79 @@ func GetsegmentEntropy(filePath string, sectionNames *[]string) (map[string]floa
 	}
 	defer peFile.Close()
 
-	var dataSection, rdataSection, textSection, bssSection *pe.Section
+	headmp := make(map[string][]byte, 0)
+	for i := 0; i < len(s); i++ {
+		headmp[s[i]] = make([]byte, 0)
+	}
 	for _, section := range peFile.Sections {
-		switch section.Name {
-		case ".data":
-			dataSection = section
-		case ".rdata":
-			rdataSection = section
-		case ".text":
-			textSection = section
-		case ".bss":
-			bssSection = section
+		data, err := section.Data()
+		if err != nil {
+			return nil, err
 		}
+		headmp[section.Name] = data
 	}
 
-	if dataSection == nil {
-		return nil, fmt.Errorf("data section not found")
+	// 计算各段的信息熵
+	for i := 0; i < len(s); i++ {
+
+		// 将 slice 传递给 op 函数，因为 op 函数接收的是一个指向 slice 的指针。
+		buffer := headmp[s[i]]
+		mp[s[i]] = op(&buffer)
 	}
-	if rdataSection == nil {
-		return nil, fmt.Errorf("rdata section not found")
-	}
-	if textSection == nil {
-		return nil, fmt.Errorf("text section not found")
-	}
-	if bssSection == nil {
-		return nil, fmt.Errorf("bss section not found")
+	return &mp, nil
+}
+
+func IsPacked(mpptr *map[string]float64) *map[string]bool {
+	mp := *mpptr
+	ans := make(map[string]bool, len(mp))
+
+	for i, v := range mp {
+		if v > 7.0 {
+			ans[i] = true
+		} else {
+			ans[i] = false
+		}
+
 	}
 
-	// 读取data段内容
-	data := make([]byte, dataSection.Size)
-	_, err = file.ReadAt(data, int64(dataSection.Offset))
+	return &ans
+
+}
+
+// GetSectionSize 函数用于返回可执行文件中各段的大小
+func GetSectionSize(file *os.File) (*map[string]uint32, error) {
+
+	peFile, err := pe.NewFile(file)
 	if err != nil {
 		return nil, err
 	}
+	defer peFile.Close()
 
-	// 计算data段的信息熵
-	mp[".data"] = op(&data)
-	return mp, nil
+	sectionSizes := make(map[string]uint32, len(peFile.Sections))
+	for _, section := range peFile.Sections {
+		sectionSizes[section.Name] = section.Size
+	}
+
+	return &sectionSizes, nil
+}
+
+// GetSectionData 函数用于返回可执行文件中各段的数据
+func GetSectionData(file *os.File) (*map[string][]byte, error) {
+
+	peFile, err := pe.NewFile(file)
+	if err != nil {
+		return nil, err
+	}
+	defer peFile.Close()
+
+	sectionData := make(map[string][]byte, len(peFile.Sections))
+	for _, section := range peFile.Sections {
+		data, err := section.Data()
+		if err != nil {
+			return nil, err
+		}
+		sectionData[section.Name] = data
+	}
+
+	return &sectionData, nil
 }
