@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 23:10:02
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-03-25 14:20:48
+ * @LastEditTime: 2025-04-03 22:50:25
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -86,4 +86,168 @@ func TestReadProcessMemory(t *testing.T) {
 		syscall.CloseHandle(process)
 		syscall.CloseHandle(thread)
 	}
+}
+
+// ... 已有代码 ...
+
+func TestGetThreadContext(t *testing.T) {
+	// 测试用例参数化
+	tests := []struct {
+		name         string
+		exePath      string
+		wantValidRip bool
+		wantErr      bool
+	}{
+		{"正常进程上下文", "E:\\ZesOJ\\sever\\test.exe", true, false},
+		// {"无效线程句柄", "E:\\ZesOJ\\sever\\test.exe", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 创建测试进程
+			process, thread, err := CreateAndBlockProcess(tt.exePath, "")
+			if err != nil && !tt.wantErr {
+				t.Fatalf("CreateAndBlockProcess() 错误 = %v", err)
+			}
+			defer syscall.CloseHandle(process)
+			defer syscall.CloseHandle(thread)
+
+			// 测试无效句柄情况
+			var invalidThread syscall.Handle = 0
+			if tt.name == "无效线程句柄" {
+				thread = invalidThread
+			}
+
+			// 获取线程上下文
+			context, err := GetThreadContext(thread)
+
+			// 错误情况验证
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("期望错误 = %v, 实际错误 = %v", tt.wantErr, err)
+			}
+
+			// 有效情况验证
+			if !tt.wantErr {
+				// 验证上下文非空
+				if context == nil {
+					t.Fatal("获取到空的上下文对象")
+				}
+
+				t.Logf("线程上下文验证:")
+
+				// 验证关键寄存器值
+				registerTests := []struct {
+					regName  string
+					regValue uint64
+				}{
+					{"RIP", context.Rip},
+					{"RSP", context.Rsp},
+					{"RAX", context.Rax},
+					{"RBX", context.Rbx},
+					{"RCX", context.Rcx},
+					{"RDX", context.Rdx},
+					{"RSI", context.Rsi},
+					{"RDI", context.Rdi},
+					{"R8", context.R8},
+					{"R9", context.R9},
+					{"R10", context.R10},
+					{"R11", context.R11},
+					{"R12", context.R12},
+					{"R13", context.R13},
+					{"R14", context.R14},
+					{"R15", context.R15},
+				}
+
+				for _, rt := range registerTests {
+					// if rt.regValue == 0 {
+					// 	t.Errorf("%s 寄存器值为0（可能无效）", rt.regName)
+					// } else {
+					t.Logf("%-5s = 0x%016x", rt.regName, rt.regValue)
+					// }
+				}
+
+				// // 验证上下文标志位
+				// if (context.ContextFlags & 0x10007) != 0x10007 {
+				// 	t.Errorf("上下文标志位异常，期望 0x10007 实际 0x%x", context.ContextFlags)
+				// }
+			}
+		})
+	}
+}
+
+// ... 其他测试函数 ...
+// ... 其他测试函数 ...
+
+func TestWriteProcessMemory(t *testing.T) {
+	tests := []struct {
+		name       string
+		exePath    string
+		data       []byte
+		injectAddr uintptr
+
+		setup func() syscall.Handle // 特殊句柄构造
+	}{
+		// {
+		// 	name:    "正常内存写入",
+		// 	exePath: "E:\\ZesOJ\\sever\\test.exe",
+		// 	data:    []byte{0x90, 0x90, 0x90}, // 3个NOP指令
+
+		// },
+		// {
+		// 	name:    "无效线程句柄",
+		// 	exePath: "E:\\ZesOJ\\sever\\test.exe",
+		// 	data:    []byte{0xCC},
+		// 	// setup:   func() syscall.Handle { return 0 },
+		// },
+		{
+			name:    "空数据写入",
+			exePath: "E:\\ZesOJ\\sever\\test.exe",
+			data:    []byte{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 创建测试进程
+			process, thread, err := CreateAndBlockProcess(tt.exePath, "")
+
+			if err != nil {
+				t.Fatalf("CreateAndBlockProcess() 错误 = %v", err)
+			}
+			defer syscall.CloseHandle(process)
+			defer syscall.CloseHandle(thread)
+			context, err := GetThreadContext(thread)
+			if err != nil {
+				t.Fatalf("GetThreadContext() 错误 = %v", err)
+			}
+
+			t.Logf("线程上下文验证: rip = 0x%016x", context.Rip)
+
+			ip := (uintptr)(context.Rip)
+
+			buffer, err := ReadProcessMemory(process, ip, 8)
+
+			if err != nil {
+				t.Fatalf("ReadProcessMemory() 错误 = %v", err)
+			}
+
+			t.Logf("内存 at RIP: %x", buffer)
+
+			ts, err := WriteProcessMemory(process, ip, tt.data)
+			if err != nil {
+				t.Fatalf("WriteProcessMemory() 错误 = %v", err)
+			}
+			t.Logf("WriteProcessMemory() 成功，写入字节数 = %d", ts)
+
+			buffer, err = ReadProcessMemory(process, ip, 8)
+
+			if err != nil {
+				t.Fatalf("ReadProcessMemory() 错误 = %v", err)
+			}
+
+			t.Logf("内存 at RIP: %x", buffer)
+
+		})
+	}
+
 }

@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 21:49:22
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-03-26 17:15:49
+ * @LastEditTime: 2025-04-03 23:00:03
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -99,4 +99,80 @@ func ReadProcessMemory(process syscall.Handle, address uintptr, size uint) ([]by
 	}
 	// 返回实际读取的数据
 	return buf[:bytesRead], nil
+
+}
+
+// GetThreadContext 函数用于获取指定线程的上下文信息。
+// 参数:
+//   - thread: 要获取上下文的线程句柄。
+//
+// 返回值:
+//   - CONTEXT 结构体，包含线程的上下文信息。
+//   - 错误信息，如果获取上下文失败。
+func GetThreadContext(thread syscall.Handle) (*CONTEXT, error) {
+	// 创建一个 CONTEXT 结构体实例
+	var context CONTEXT
+	// 设置 ContextFlags，指定要获取的上下文信息
+	context.ContextFlags = CONTEXT_FULL
+
+	// 调用 Windows API 函数 GetThreadContext 获取线程上下文
+	ret, _, err := procGetThreadContext.Call(
+		uintptr(thread),                   // 线程句柄
+		uintptr(unsafe.Pointer(&context)), // 指向 CONTEXT 结构体的指针
+	)
+
+	// 如果调用失败（返回值为 0），则返回错误
+	if ret == 0 {
+		return nil, err
+	}
+
+	// 返回获取到的线程上下文
+	return &context, nil
+}
+
+// WriteProcessMemory 函数用于向指定线程的内存中写入数据。
+// 参数:
+//   - thread: 要写入内存的线程句柄。
+//   - address: 要写入的内存地址。
+//   - data: 要写入的数据字节切片。
+//
+// 返回值:
+//   - 写入的字节数。
+//   - 错误信息，如果写入过程中出现错误。
+func WriteProcessMemory(thread syscall.Handle, address uintptr, data []byte) (uintptr, error) {
+	if (data == nil) || (len(data) == 0) {
+		return 0, nil
+	}
+	var bytesWritten uint32
+	ret, _, err := procWriteProcessMemory.Call(
+		uintptr(thread),
+		address,
+		uintptr(unsafe.Pointer(&data[0])),
+		uintptr(len(data)),
+		uintptr(unsafe.Pointer(&bytesWritten)),
+	)
+	if ret == 0 {
+		return 0, err
+	}
+	return uintptr(bytesWritten), nil
+}
+
+// Makebreakpoint 函数用于在指定线程的指定地址设置断点。
+// 参数:
+//   - thread: 要设置断点的线程句柄。
+//   - address: 要设置断点的内存地址。
+//
+// 返回值:
+//   - 错误信息，如果设置断点失败。
+func Makebreakpoint(thread syscall.Handle, address uintptr) error {
+
+	breakpointInstruction := byte(0xCC)
+
+	// 写入断点指令到指定地址
+	_, err := WriteProcessMemory(thread, address, []byte{breakpointInstruction})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
