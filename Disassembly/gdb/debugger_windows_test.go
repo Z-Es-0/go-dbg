@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 23:10:02
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-03 22:50:25
+ * @LastEditTime: 2025-04-04 00:58:53
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -250,4 +250,76 @@ func TestWriteProcessMemory(t *testing.T) {
 		})
 	}
 
+}
+
+func TestReviseThreadContext(t *testing.T) {
+	// 创建测试进程
+	exePath := "E:\\ZesOJ\\sever\\test.exe"
+	process, thread, err := CreateAndBlockProcess(exePath, "")
+	if err != nil {
+		t.Fatalf("创建进程失败: %v", err)
+	}
+	defer syscall.CloseHandle(process)
+	defer syscall.CloseHandle(thread)
+
+	// 获取原始上下文
+	originalCtx, err := GetThreadContext(thread)
+	if err != nil {
+		t.Fatalf("获取原始上下文失败: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		register  string
+		testValue uint64
+	}{
+		{"修改RAX寄存器", "Rax", 0x1234ABCD},
+		{"修改RIP寄存器", "Rip", 0x00007FFBC0012345},
+		{"修改RSP寄存器", "Rsp", 0x000000C001235500},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 复制原始上下文进行修改
+			modifiedCtx := *originalCtx
+
+			// 执行寄存器修改
+			if err := ReviseThreadContext(thread, &modifiedCtx, tt.register, tt.testValue); err != nil {
+				t.Fatalf("修改寄存器失败: %v", err)
+			}
+
+			// 获取修改后的上下文
+			updatedCtx, err := GetThreadContext(thread)
+			if err != nil {
+				t.Fatalf("获取更新后上下文失败: %v", err)
+			}
+
+			// 打印对比结果
+			t.Logf("\n[%s 修改前后对比]\n"+
+				"修改前 %s = 0x%016X\n"+
+				"设置值 %s = 0x%016X\n"+
+				"实际值 %s = 0x%016X\n"+
+				"修改是否生效: %t",
+				tt.register,
+				tt.register, getRegisterValue(originalCtx, tt.register),
+				tt.register, tt.testValue,
+				tt.register, getRegisterValue(updatedCtx, tt.register),
+				getRegisterValue(updatedCtx, tt.register) == tt.testValue)
+		})
+	}
+}
+
+// 辅助函数获取寄存器值
+func getRegisterValue(ctx *CONTEXT, regName string) uint64 {
+	switch regName {
+	case "Rax":
+		return ctx.Rax
+	case "Rip":
+		return ctx.Rip
+	case "Rsp":
+		return ctx.Rsp
+	// 可根据需要添加其他寄存器
+	default:
+		return 0
+	}
 }

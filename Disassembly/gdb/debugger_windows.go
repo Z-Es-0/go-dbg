@@ -2,14 +2,14 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 21:49:22
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-03 23:00:03
+ * @LastEditTime: 2025-04-04 00:58:29
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 package gdb
 
-// 引入windows包以使用Windows API
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 )
@@ -175,4 +175,108 @@ func Makebreakpoint(thread syscall.Handle, address uintptr) error {
 	}
 
 	return nil
+}
+
+// setFlag 函数用于设置或清除指定的标志位。
+// 参数:
+//   - EFlags: 原始的标志位值。
+//   - flag: 要设置或清除的标志位。
+//   - set: 一个布尔值，如果为 true，则设置标志位；如果为 false，则清除标志位。
+//
+// 返回值:
+//   - 更新后的标志位值。
+func setFlag(EFlags uint32, flag uint32, set bool) uint32 {
+	if set {
+		return EFlags | flag
+	}
+	return EFlags & ^flag
+}
+
+// ReviseThreadContext 函数用于设置指定线程的上下文信息。
+// 参数:
+//   - thread: 要设置上下文的线程句柄。
+//   - context: 要设置的上下文信息。
+//   - name: 寄存器名称，目标修改的寄存器名称。
+//   - value: 寄存器值，要设置的寄存器值。
+//
+// 返回值:
+//   - 错误信息，如果设置上下文失败。
+func ReviseThreadContext(thread syscall.Handle, context *CONTEXT, name string, value uint64) error {
+	switch name {
+	case "Rip":
+		context.Rip = value
+	case "Rax":
+		context.Rax = value
+	case "Rcx":
+		context.Rcx = value
+	case "Rdx":
+		context.Rdx = value
+	case "Rbx":
+		context.Rbx = value
+	case "Rsp":
+		context.Rsp = value
+	case "Rbp":
+		context.Rbp = value
+	case "Rsi":
+		context.Rsi = value
+	case "Rdi":
+		context.Rdi = value
+	case "R8":
+		context.R8 = value
+	case "R9":
+		context.R9 = value
+	case "R10":
+		context.R10 = value
+	case "R11":
+		context.R11 = value
+	case "R12":
+		context.R12 = value
+	case "R13":
+		context.R13 = value
+	case "R14":
+		context.R14 = value
+	case "R15":
+		context.R15 = value
+	case "EFlags":
+		context.EFlags = ReviseEFlags(context.EFlags, value, name)
+	default:
+		return fmt.Errorf("unsupported register name: %s", name)
+	}
+
+	// 调用 SetThreadContext 更新线程上下文
+	ret, _, err := procSetThreadContext.Call(
+		uintptr(thread),
+		uintptr(unsafe.Pointer(context)),
+	)
+	if ret == 0 {
+		return err
+	}
+
+	return nil
+}
+
+func ReviseEFlags(EFlags uint32, value uint64, name string) uint32 {
+	set := value != 0
+	switch name {
+	case "CF":
+		return setFlag(EFlags, CF, set)
+	case "PF":
+		return setFlag(EFlags, PF, set)
+	case "AF":
+		return setFlag(EFlags, AF, set)
+	case "ZF":
+		return setFlag(EFlags, ZF, set)
+	case "SF":
+		return setFlag(EFlags, SF, set)
+	case "TF":
+		return setFlag(EFlags, TF, set)
+	case "IF":
+		return setFlag(EFlags, IF, set)
+	case "DF":
+		return setFlag(EFlags, DF, set)
+	case "OF":
+		return setFlag(EFlags, OF, set)
+	default:
+		return EFlags
+	}
 }

@@ -2,13 +2,15 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-04-03 14:47:50
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-03 22:16:58
+ * @LastEditTime: 2025-04-04 00:00:12
  * @FilePath: \ZesOJ\Disassembly\gdb\winhead.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 package gdb
 
 import (
+	"fmt"
+	"reflect"
 	"unsafe"
 )
 
@@ -21,6 +23,19 @@ const (
 	CONTEXT_XSTATE          = 0x10020                                              // 扩展状态寄存器
 	CONTEXT_FULL            = CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS //所有用户态寄存器
 
+)
+
+// 标志位掩码
+const (
+	CF = (uint32)(1 << 0)  // 进位标志
+	PF = (uint32)(1 << 2)  // 奇偶校验标志
+	AF = (uint32)(1 << 4)  // 辅助进位标志
+	ZF = (uint32)(1 << 6)  // 零标志
+	SF = (uint32)(1 << 7)  // 符号标志
+	TF = (uint32)(1 << 8)  // 陷阱标志
+	IF = (uint32)(1 << 9)  // 中断使能标志
+	DF = (uint32)(1 << 10) // 方向标志
+	OF = (uint32)(1 << 11) // 溢出标志
 )
 
 //go:align 16
@@ -42,7 +57,7 @@ type CONTEXT struct {
 	SegGs uint16
 	SegSs uint16
 
-	EFlags uint32
+	EFlags uint32 // 32位标志寄存器
 
 	Dr0 uint64
 	Dr1 uint64
@@ -123,4 +138,60 @@ func (c *CONTEXT) D() *[32]uint64 {
 
 func (c *CONTEXT) S() *[32]uint32 {
 	return (*[32]uint32)(unsafe.Pointer(&c.unionArea[0]))
+}
+
+// OffsetOfFieldByName 根据字段名计算CONTEXT结构体中对应字段的偏移量
+func OffsetOfFieldByName(fieldName string) (uintptr, error) {
+	var context CONTEXT
+	value := reflect.ValueOf(&context).Elem()
+	field := value.FieldByName(fieldName)
+	if !field.IsValid() {
+		return 0, fmt.Errorf("field %s not found in CONTEXT struct", fieldName)
+	}
+	return field.UnsafeAddr() - value.UnsafeAddr(), nil
+}
+
+// GetCF 获取进位标志 (CF)
+func (c *CONTEXT) GetCF() bool {
+	return c.EFlags&CF != 0
+}
+
+// GetPF 获取奇偶校验标志 (PF)
+func (c *CONTEXT) GetPF() bool {
+	return c.EFlags&PF != 0
+}
+
+// GetAF 获取辅助进位标志 (AF)
+func (c *CONTEXT) GetAF() bool {
+	return c.EFlags&AF != 0
+}
+
+// GetZF 获取零标志 (ZF)
+func (c *CONTEXT) GetZF() bool {
+	return c.EFlags&ZF != 0
+}
+
+// GetSF 获取符号标志 (SF)
+func (c *CONTEXT) GetSF() bool {
+	return c.EFlags&SF != 0
+}
+
+// GetTF 获取陷阱标志 (TF)
+func (c *CONTEXT) GetTF() bool {
+	return c.EFlags&TF != 0
+}
+
+// GetIF 获取中断使能标志 (IF)
+func (c *CONTEXT) GetIF() bool {
+	return c.EFlags&IF != 0
+}
+
+// GetDF 获取方向标志 (DF)
+func (c *CONTEXT) GetDF() bool {
+	return c.EFlags&DF != 0
+}
+
+// GetOF 获取溢出标志 (OF)
+func (c *CONTEXT) GetOF() bool {
+	return c.EFlags&OF != 0
 }
