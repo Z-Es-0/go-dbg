@@ -195,3 +195,12 @@ func (c *CONTEXT) GetDF() bool {
 func (c *CONTEXT) GetOF() bool {
 	return c.EFlags&OF != 0
 }
+
+// 一条指令的结构体
+type Directive struct {
+	address     uintptr // 指令地址
+	size        uint32  // 指令大小
+	machinecode string  // 指令的机器码
+	asmcode     string  // 指令的汇编代码
+	//comment string    // 指令的注释
+}

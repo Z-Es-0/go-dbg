@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 21:49:22
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-04 00:58:29
+ * @LastEditTime: 2025-04-04 13:23:18
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/arch/x86/x86asm"
 )
 
 // 定义必要的常量
@@ -279,4 +281,82 @@ func ReviseEFlags(EFlags uint32, value uint64, name string) uint32 {
 	default:
 		return EFlags
 	}
+}
+
+// Disassemble 反汇编单个指令
+// 参数:
+//   - code: 机器码字节切片
+//   - pc: 指令地址（用于计算跳转目标）
+//   - bit: 架构位数 (32 或 64)
+//
+// 返回值:
+//   - 汇编指令字符串
+//   - 指令长度
+//   - 错误信息
+func Disassemble(code []byte, pc uint64, bit int) (string, int, error) {
+	inst, err := x86asm.Decode(code, bit)
+	if err != nil {
+		return "", 0, fmt.Errorf("解码失败: %w", err)
+	}
+
+	// 获取指令文本
+	syntax := x86asm.GNUSyntax(inst, pc, nil)
+	return fmt.Sprintf("%-36s // % x", syntax, code[:inst.Len]), inst.Len, nil
+
+}
+
+// DisassembleRange 反汇编指定内存范围
+// 参数:
+//   - memory: 要反汇编的内存字节切片。
+//   - startAddr: 起始地址，用于计算指令的实际地址。
+//   - bit: 架构位数 (32 或 64)。
+//
+// 返回值:
+//   - 包含反汇编结果的字符串切片，每个元素对应一条指令。
+func DisassembleRange(memory []byte, startAddr uint64, bit int) []string {
+	var (
+		offset    uint64   // 当前偏移量，用于遍历内存字节切片。
+		result    []string // 存储反汇编结果的字符串切片。
+		maxLength = 15     // 单条指令最大尝试长度，通常为 8 字节。
+	)
+
+	// 遍历内存字节切片，逐条反汇编指令
+	for offset < uint64(len(memory)) {
+		remaining := len(memory) - int(offset) // 剩余未处理的字节数
+		if remaining <= 0 {
+			break // 如果没有剩余字节，退出循环
+		}
+
+		// 动态调整解码长度，确保不会超出剩余字节范围
+		tryLength := remaining
+		if tryLength > maxLength {
+			tryLength = maxLength
+		}
+
+		// 从当前偏移量开始获取待解码的字节切片
+		code := memory[offset:]
+		inst, err := x86asm.Decode(code, bit) // 尝试解码指令
+		if err != nil {
+			// 如果解码失败，假设当前字节为无效指令，并向前推进1字节
+			result = append(result, fmt.Sprintf("DB 0x%02x      ; 无效指令", code[0]))
+			offset++ // 偏移量增加1
+			continue
+		}
+
+		// 成功解码指令后，调用 Disassemble 获取指令的汇编文本
+		syntax, _, err := Disassemble(code, startAddr+offset, bit)
+		if err != nil {
+			// 如果反汇编过程中出现错误，记录错误信息并跳过该指令
+			result = append(result, fmt.Sprintf("Error: %v", err))
+			offset++ // 偏移量增加1
+			continue
+		}
+
+		// 将反汇编结果添加到结果切片中
+		result = append(result, syntax)
+		offset += uint64(inst.Len) // 偏移量增加当前指令的长度
+	}
+
+	// 返回包含所有反汇编结果的字符串切片
+	return result
 }

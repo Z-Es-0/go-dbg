@@ -2,13 +2,14 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 23:10:02
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-04 00:58:53
+ * @LastEditTime: 2025-04-04 13:19:21
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 package gdb
 
 import (
+	"fmt"
 	"syscall"
 	"testing"
 )
@@ -72,12 +73,28 @@ func TestReadProcessMemory(t *testing.T) {
 		t.Log("OK with CreateAndBlockProcess")
 
 		var buffer []byte
-		rip := uintptr(0x000007FFC7C291070) // Example address, replace with actual RIP value
+		context, err := GetThreadContext(thread)
+		if err != nil {
+			t.Errorf("GetThreadContext() error = %v", err)
+			return
+		}
+		t.Logf("RIP: %x", context.Rip)
+		rip := uintptr(context.Rip) // Example address, replace with actual RIP value
 
 		buffer, err = ReadProcessMemory(process, rip, 8)
 		if err != nil {
 			t.Errorf("ReadProcessMemory() error = %v", err)
 			return
+		}
+
+		// 添加反汇编验证
+		if len(buffer) > 0 {
+			asm, _, err := Disassemble(buffer, uint64(rip), 64)
+			if err == nil {
+				t.Logf("内存反汇编结果: %s", asm)
+			} else {
+				t.Logf("原始字节: % X", buffer)
+			}
 		}
 
 		t.Logf("Memory at RIP: %x", buffer)
@@ -87,8 +104,6 @@ func TestReadProcessMemory(t *testing.T) {
 		syscall.CloseHandle(thread)
 	}
 }
-
-// ... 已有代码 ...
 
 func TestGetThreadContext(t *testing.T) {
 	// 测试用例参数化
@@ -174,9 +189,6 @@ func TestGetThreadContext(t *testing.T) {
 		})
 	}
 }
-
-// ... 其他测试函数 ...
-// ... 其他测试函数 ...
 
 func TestWriteProcessMemory(t *testing.T) {
 	tests := []struct {
@@ -322,4 +334,39 @@ func getRegisterValue(ctx *CONTEXT, regName string) uint64 {
 	default:
 		return 0
 	}
+}
+
+func TestDisassembleRange(t *testing.T) {
+	// 创建测试进程
+	exePath := "E:\\ZesOJ\\sever\\test.exe"
+	process, thread, err := CreateAndBlockProcess(exePath, "")
+	if err != nil {
+		t.Fatalf("创建进程失败: %v", err)
+	}
+	defer syscall.CloseHandle(process)
+	defer syscall.CloseHandle(thread)
+
+	// 获取原始上下文
+	originalCtx, err := GetThreadContext(thread)
+
+	if err != nil {
+		t.Fatalf("获取原始上下文失败: %v", err)
+	}
+
+	// 获取原始内存内容
+	ip := (uintptr)(originalCtx.Rip)
+	buffer, err := ReadProcessMemory(process, ip, 800)
+	if err != nil {
+		t.Fatalf("读取内存失败: %v", err)
+	}
+
+	// 反汇编内存
+	instructions := DisassembleRange(buffer, (uint64)(ip), 64)
+
+	// 打印反汇编结
+	t.Logf("反汇编结果:")
+	for _, inst := range instructions {
+		fmt.Println(inst)
+	}
+
 }
