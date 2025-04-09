@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-09 23:58:33
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-03-12 21:45:30
+ * @LastEditTime: 2025-04-06 19:31:52
  * @FilePath: \ZesOJ\Disassembly\ReadPE\pe_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -80,41 +80,5 @@ func printPEInfo(t *testing.T, pe *PEHeader) {
 		t.Logf("堆提交大小: 0x%X", oh64.SizeOfHeapCommit)
 		t.Logf("栈保留大小: 0x%X", oh64.SizeOfStackReserve)
 		t.Logf("栈提交大小: 0x%X", oh64.SizeOfStackCommit)
-	}
-}
-
-// 机器类型转换
-func machineTypeToString(machine uint16) string {
-	switch machine {
-	case 0x8664:
-		return "x86-64"
-	case 0x14C:
-		return "x86"
-	case 0xAA64:
-		return "ARM64"
-	default:
-		return "未知架构"
-	}
-}
-
-// 子系统类型转换
-func subsystemToString(subsystem uint16) string {
-	switch subsystem {
-	case 1:
-		return "设备驱动"
-	case 2:
-		return "Windows GUI"
-	case 3:
-		return "Windows CUI"
-	case 5:
-		return "OS/2 CUI"
-	case 7:
-		return "POSIX CUI"
-	case 9:
-		return "Windows CE GUI"
-	case 10:
-		return "EFI应用"
-	default:
-		return "未知子系统"
 	}
 }

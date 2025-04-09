@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 23:10:02
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-04 13:19:21
+ * @LastEditTime: 2025-04-09 21:12:26
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -89,16 +89,15 @@ func TestReadProcessMemory(t *testing.T) {
 
 		// 添加反汇编验证
 		if len(buffer) > 0 {
-			asm, _, err := Disassemble(buffer, uint64(rip), 64)
+			asm, err := Disassemble(buffer, uint64(rip), 64)
 			if err == nil {
-				t.Logf("内存反汇编结果: %s", asm)
+				t.Logf("内存反汇编结果: %s", asm.Armcode)
 			} else {
-				t.Logf("原始字节: % X", buffer)
+				t.Errorf("反汇编失败，原始字节: % X, 错误信息: %v", buffer, err)
 			}
 		}
 
 		t.Logf("Memory at RIP: %x", buffer)
-
 		// Close handles to avoid resource leaks
 		syscall.CloseHandle(process)
 		syscall.CloseHandle(thread)
@@ -365,8 +364,247 @@ func TestDisassembleRange(t *testing.T) {
 
 	// 打印反汇编结
 	t.Logf("反汇编结果:")
-	for _, inst := range instructions {
-		fmt.Println(inst)
+	for _, inst := range *instructions {
+		addressStr := fmt.Sprintf("%016X", inst.Address)
+		mashionStr := ""
+		for i, b := range inst.HexCodes {
+			if i > 0 {
+				mashionStr += " "
+			}
+			mashionStr += fmt.Sprintf("%02X", b)
+		}
+		fmt.Printf("0x%-19s  %-30s  %-30s \n", addressStr, mashionStr, inst.Armcode /*, inst.Length*/)
 	}
 
 }
+
+func TestGetProcessID(t *testing.T) {
+	tests := []struct {
+		name    string
+		exePath string
+		wantErr bool
+	}{
+		{"Valid Process", "E:\\ZesOJ\\sever\\test.exe", false},
+		// {"Invalid Process Handle", "", true}, // Uncomment to test invalid handle
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a test process
+			process, thread, err := CreateAndBlockProcess(tt.exePath, "")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("CreateAndBlockProcess() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			defer syscall.CloseHandle(process)
+			defer syscall.CloseHandle(thread)
+
+			if !tt.wantErr {
+				// Get the process ID
+				pid, err := GetProcessID(process)
+				if err != nil {
+					t.Errorf("GetProcessID() error = %v", err)
+				} else {
+					t.Logf("Process ID: %d", pid)
+				}
+
+				// Validate the PID
+				if pid == 0 {
+					t.Errorf("GetProcessID() returned invalid PID: %d", pid)
+				}
+			}
+		})
+	}
+}
+
+// func TestBreakpointHandling(t *testing.T) {
+// 	// 创建测试进程
+// 	exePath := "E:\\ZesOJ\\sever\\test.exe"
+// 	process, thread, err := CreateAndBlockProcess(exePath, "")
+// 	if err != nil {
+// 		t.Fatalf("创建进程失败: %v", err)
+// 	}
+// 	defer syscall.CloseHandle(process)
+// 	defer syscall.CloseHandle(thread)
+
+// 	// 初始化调试机
+// 	dbg := &DbgMachine{
+// 		process:     process,
+// 		thread:      thread,
+// 		breakpoints: make(map[uintptr]*Dbgbreak),
+// 		textdata:    make(map[uintptr]*Directive),
+// 	}
+
+// 	entryPoint := uint64(0x00007FFD745AAF17)
+
+// 	// 读取入口点内存
+// 	data, err := ReadProcessMemory(process, uintptr(entryPoint), 16)
+// 	if err != nil {
+// 		t.Fatalf("读取内存失败: %v", err)
+// 	}
+
+// 	// 反汇编入口点指令
+// 	directive, err := Disassemble(data, entryPoint, 64)
+// 	if err != nil {
+// 		t.Fatalf("反汇编失败: %v", err)
+// 	}
+
+// 	// 设置断点
+// 	t.Logf("设置断点在 0x%X", entryPoint)
+// 	if err := dbg.SetBreakpoint(&directive); err != nil {
+// 		t.Fatalf("设置断点失败: %v", err)
+// 	}
+
+// 	// 调试事件循环
+// 	var debugEvent *DEBUG_EVENT
+// 	for {
+// 		// 等待调试事件
+// 		debugEvent, err = WaitForDebug()
+// 		if err != nil {
+// 			t.Fatalf("等待调试事件失败: %v", err)
+// 		}
+
+// 		switch debugEvent.DebugEventCode {
+// 		case EXCEPTION_DEBUG_EVENT:
+// 			if debugEvent.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_BREAKPOINT {
+// 				t.Log("\n=== 断点触发 ===")
+// 				ctx, err := GetThreadContext(thread)
+// 				if err != nil {
+// 					t.Fatalf("获取上下文失败: %v", err)
+// 				}
+
+// 				t.Logf("RIP = 0x%016X", ctx.Rip)
+
+// 				// 获取断点信息
+// 				bpAddr := uintptr(debugEvent.Exception.ExceptionRecord.ExceptionAddress)
+// 				bp, exists := dbg.breakpoints[bpAddr]
+// 				if !exists {
+// 					t.Fatal("未找到注册的断点信息")
+// 				}
+
+// 				// 打印断点详细信息
+// 				t.Logf("断点地址: 0x%X", bp.address)
+// 				t.Logf("原始指令: % X", bp.rawcode.HexCodes)
+// 				t.Logf("指令长度: %d", bp.rawcode.Length)
+// 				t.Logf("汇编指令: %s", bp.rawcode.Armcode)
+
+// 				// 验证调试状态
+// 				ctx, err = GetThreadContext(thread)
+// 				if err != nil {
+// 					t.Fatalf("获取上下文失败: %v", err)
+// 				}
+
+// 				t.Logf("RIP = 0x%016X", ctx.Rip)
+// 				t.Logf("断点地址匹配: %v", ctx.Rip == uint64(bp.address))
+// 				// 恢复原始指令
+
+// 				t.Log("恢复原始指令...")
+// 				if _, err := WriteProcessMemory(process, bp.address, bp.rawcode.HexCodes); err != nil {
+// 					t.Fatalf("恢复指令失败: %v", err)
+// 				}
+// 				// 在断点处理逻辑中添加以下代码
+// 				ctx.Rip = uint64(bp.address) // 将RIP设置为原断点地址
+
+// 				// 更新线程上下文
+// 				if err := ReviseThreadContext(thread, ctx, "Rip", ctx.Rip); err != nil {
+// 					t.Fatalf("修复RIP失败: %v", err)
+// 				}
+
+// 				ctx, err = GetThreadContext(thread)
+// 				if err != nil {
+// 					t.Fatalf("获取上下文失败: %v", err)
+// 				}
+
+// 				t.Logf("RIP = 0x%016X", ctx.Rip)
+// 				t.Logf("断点地址匹配: %v", ctx.Rip == uint64(bp.address))
+
+// 				// 继续执行后续代码
+// 				if err := ContinueDebugEvent(
+// 					debugEvent.ProcessId,
+// 					debugEvent.ThreadId,
+// 					DBG_CONTINUE,
+// 				); err != nil {
+// 					t.Fatalf("继续执行失败: %v", err)
+// 				}
+
+// 				return // 结束测试
+// 			}
+// 		case EXIT_PROCESS_DEBUG_EVENT:
+// 			t.Fatal("进程意外退出")
+// 		}
+
+// 		// 继续执行
+// 		if err := ContinueDebugEvent(
+// 			debugEvent.ProcessId,
+// 			debugEvent.ThreadId,
+// 			DBG_CONTINUE,
+// 		); err != nil {
+// 			t.Fatalf("继续执行失败: %v", err)
+// 		}
+// 	}
+// }
+
+// TestGetThreadID 测试 GetThreadID 函数。
+func TestGetThreadID(t *testing.T) {
+	// 创建测试进程
+	exePath := "E:\\ZesOJ\\sever\\test.exe"
+	_, tt, _ := CreateAndBlockProcess(exePath, "")
+
+	// 测试用例参数化
+	tests := []struct {
+		name   string
+		thread syscall.Handle
+		// wantErr bool
+	}{
+		// 这里假设我们有一个有效的线程句柄，实际测试时需要替换为真实有效的句柄
+		// {"Valid Thread", validThreadHandle, false},
+		{name: "test Thread", thread: tt},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tid, err := GetThreadID(tt.thread)
+			t.Logf("Thread ID: %d", tid)
+			if err != nil {
+				t.Errorf("GetThreadID() error = %v", err)
+			}
+
+		})
+	}
+}
+
+// // TestGetProcessID 测试 GetProcessID 函数
+// func TestGetProcessID(t *testing.T) {
+// 	// 创建一个测试进程
+// 	exePath := "E:\\ZesOJ\\sever\\test.exe"
+// 	process, _, err := CreateAndBlockProcess(exePath, "")
+// 	if err != nil {
+// 		t.Fatalf("CreateAndBlockProcess() error = %v", err)
+// 	}
+// 	defer syscall.CloseHandle(process)
+
+// 	tests := []struct {
+// 		name    string
+// 		process syscall.Handle
+// 		wantErr bool
+// 	}{
+// 		{"Valid Process", process, false},
+// 		{"Invalid Process Handle", 0, true},
+// 	}
+
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			pid, err := GetProcessID(tt.process)
+// 			if (err != nil) != tt.wantErr {
+// 				t.Errorf("GetProcessID() error = %v, wantErr %v", err, tt.wantErr)
+// 				return
+// 			}
+// 			if !tt.wantErr {
+// 				if pid == 0 {
+// 					t.Errorf("GetProcessID() returned invalid PID: %d", pid)
+// 				} else {
+// 					t.Logf("Process ID: %d", pid)
+// 				}
+// 			}
+// 		})
+// 	}
+// }

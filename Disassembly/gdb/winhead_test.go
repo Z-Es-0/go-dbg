@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-04-03 21:03:27
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-03 23:49:21
+ * @LastEditTime: 2025-04-09 22:27:01
  * @FilePath: \ZesOJ\Disassembly\gdb\winhead_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -10,7 +10,10 @@
 package gdb
 
 import (
+	"fmt"
+
 	"reflect"
+	"syscall"
 	"testing"
 	"unsafe"
 )
@@ -107,4 +110,133 @@ func TestOffsetOfFieldByName(t *testing.T) {
 
 		})
 	}
+}
+
+func TestGetUnion(t *testing.T) {
+
+}
+
+// 新增断点工作流测试
+// 新增断点工作流测试
+func TestBreakpointWorkflow(t *testing.T) {
+	exePath := "E:\\ZesOJ\\sever\\test.exe"
+	process, thread, err := CreateAndBlockProcess(exePath, "")
+	if err != nil {
+		t.Fatalf("进程创建失败: %v", err)
+	}
+	defer syscall.CloseHandle(process)
+	defer syscall.CloseHandle(thread)
+
+	debugmashin := &DbgMachine{
+		process:     process,
+		thread:      thread,
+		breakpoints: make(map[uintptr]*Dbgbreak),
+		textdata:    make(map[uintptr]*Directive),
+	}
+
+	// 设置断点
+	err = debugmashin.Maketextdata()
+	if err != nil {
+		t.Fatalf("设置断点失败: %v", err)
+	}
+
+	threadID, err := GetThreadID(thread)
+	if err != nil {
+		t.Fatalf("获取线程ID失败: %v", err)
+	}
+	processID, err := GetProcessID(process)
+	if err != nil {
+		t.Fatalf("获取进程ID失败: %v", err)
+	}
+
+	debugEvent := &DEBUG_EVENT{
+		DebugEventCode: 0,
+		ThreadId:       threadID,
+		ProcessId:      processID,
+	}
+	if err = debugmashin.SetBreakpoint(0x00007FFFD102AF1E); err != nil {
+		t.Fatalf("设置断点失败: %v", err)
+	}
+
+	// 调试事件循环
+	for {
+		debugEvent, err = WaitForDebug(debugEvent)
+		if err != nil {
+			t.Fatalf("等待调试事件失败: %v", err)
+		}
+
+		switch debugEvent.DebugEventCode {
+
+		case EXCEPTION_DEBUG_EVENT:
+			{
+
+				switch (GetUnion[EXCEPTION_DEBUG_INFO](debugEvent)).ExceptionRecord.ExceptionCode {
+
+				case EXCEPTION_ACCESS_VIOLATION:
+					fmt.Println("内存访问冲突")
+				case EXCEPTION_BREAKPOINT:
+					fmt.Println("断点触发")
+					DoEXCEPTION_BREAKPOINT(debugmashin, debugEvent)
+
+					debugmashin.DeleteBreakpoint(0x00007FFFD102AF1E)
+
+				case EXCEPTION_SINGLE_STEP:
+					fmt.Println("单步执行异常") // 单步执行异常
+					DoEXCEPTION_BREAKPOINT(debugmashin, debugEvent)
+				case EXCEPTION_GUARD_PAGE:
+					fmt.Println("保护页异常") // 保护页异常
+
+				case EXCEPTION_DATATYPE_MISALIGNMENT:
+					fmt.Println("数据类型不匹配异常") // 数据类型不匹配异常
+
+				case EXCEPTION_NONCONTINUABLE_EXCEPTION:
+					fmt.Println("不可继续执行异常") // 不可继续执行异常
+
+				default:
+					fmt.Println((GetUnion[EXCEPTION_DEBUG_INFO](debugEvent)).ExceptionRecord.ExceptionCode)
+
+					fmt.Println("其他异常")
+
+				}
+			}
+
+		case CREATE_THREAD_DEBUG_EVENT:
+			fmt.Println("线程创建")
+			context, _ := GetThreadContext(debugmashin.thread)
+			PrintContext(context)
+		case LOAD_DLL_DEBUG_EVENT:
+			fmt.Println("DLL加载")
+			context, _ := GetThreadContext(debugmashin.thread)
+			PrintContext(context)
+
+		case EXIT_PROCESS_DEBUG_EVENT:
+			t.Log("目标进程正常退出")
+			return
+
+		}
+
+		ContinueDebugEvent(
+			debugEvent.ProcessId,
+			debugEvent.ThreadId,
+			DBG_CONTINUE,
+		)
+
+	}
+}
+
+func DoEXCEPTION_BREAKPOINT(debugmashin *DbgMachine, DebugEv *DEBUG_EVENT) {
+	// 处理断点事件
+	fmt.Println("等会写")
+}
+
+func PrintContext(ctx *CONTEXT) {
+	fmt.Printf("Rip: 0x%X\n", ctx.Rip)
+	fmt.Printf("Rax: 0x%X\n", ctx.Rax)
+	fmt.Printf("Rcx: 0x%X\n", ctx.Rcx)
+	fmt.Printf("Rdx: 0x%X\n", ctx.Rdx)
+	fmt.Printf("Rbx: 0x%X\n", ctx.Rbx)
+	fmt.Printf("Rsp: 0x%X\n", ctx.Rsp)
+	fmt.Printf("Rbp: 0x%X\n", ctx.Rbp)
+	fmt.Printf("Rsi: 0x%X\n", ctx.Rsi)
+	fmt.Printf("Rdi: 0x%X\n", ctx.Rdi)
 }

@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-04-03 14:47:50
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-04 00:00:12
+ * @LastEditTime: 2025-04-09 22:26:25
  * @FilePath: \ZesOJ\Disassembly\gdb\winhead.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -11,6 +11,7 @@ package gdb
 import (
 	"fmt"
 	"reflect"
+	"syscall"
 	"unsafe"
 )
 
@@ -196,11 +197,274 @@ func (c *CONTEXT) GetOF() bool {
 	return c.EFlags&OF != 0
 }
 
-// 一条指令的结构体
+// Directive 反汇编指令结构体
 type Directive struct {
-	address     uintptr // 指令地址
-	size        uint32  // 指令大小
-	machinecode string  // 指令的机器码
-	asmcode     string  // 指令的汇编代码
-	//comment string    // 指令的注释
+	Length   uint32 // 指令长度
+	Address  uint64 // 指令地址
+	HexCodes []byte // 机器码
+	Armcode  string // 汇编指令
+	Comment  string // 注释
+	//breakpoint bool // 是否设置断点
+}
+
+// Dbgbreak 增加原始字节字段
+type Dbgbreak struct {
+	address  uintptr
+	original byte // 新增：保存被替换的原始字节
+	rawcode  *Directive
+}
+
+type DbgMachine struct {
+	process syscall.Handle // 进程句柄
+
+	thread syscall.Handle // 线程句柄
+	// 存储所有断点的切片
+	breakpoints map[uintptr]*Dbgbreak
+
+	textdata map[uintptr]*Directive // 存储所有指令的映射，key 为指令首地址，value 为指令结构体指针
+}
+
+// SetBreakpoint 为指定的指令设置断点。
+// 该函数接收一个 uintptr 类型的参数，代表要设置断点的指令地址。
+// 如果指令为空，则返回错误。
+// 如果断点已经存在，则不做任何操作。
+// 该函数会将断点信息添加到 DbgMachine 的 breakpoints 映射中，并将断点地址处的内存写入 0xCC（INT 3 指令）。
+func (d *DbgMachine) SetBreakpoint(address uintptr) error {
+	if d.process == 0 || d.thread == 0 {
+		return fmt.Errorf("无效的调试器句柄")
+	}
+
+	// 检查断点是否已经存在于 breakpoints 映射中
+	if _, exists := d.breakpoints[uintptr(address)]; exists {
+		// 如果断点已经存在，直接返回 nil，表示不需要再次设置
+		return nil
+	}
+	// 读取原始指令的机器码
+	//oldCode := make([]byte, rawcode.Length)
+	origBytes, err := ReadProcessMemory(d.process, uintptr(address), 1)
+
+	if err != nil {
+		return err
+	}
+
+	// 创建断点结构体
+	breakpoint := &Dbgbreak{
+		address:  address,
+		original: origBytes[0],
+		rawcode:  d.textdata[address],
+	}
+
+	// 写入 INT 3 指令 (0xCC)
+	int3Code := []byte{0xCC}
+	_, err = WriteProcessMemory(d.process, address, int3Code)
+	if err == nil {
+		// 将断点信息添加到 DbgMachine 的 breakpoints 映射中
+		d.breakpoints[address] = breakpoint
+		return nil
+	}
+	return err
+
+}
+
+// DeleteBreakpoint 为指定的指令删除断点。
+// 该函数接收一个 *Directive 类型的参数，代表要删除断点的指令。
+// 如果指令为空，则返回错误。
+// 如果断点不存在，则不做任何操作。
+// 该函数会将断点地址处的内存恢复为原始指令的机器码，并从 DbgMachine 的 breakpoints 映射中删除该断点信息。
+func (d *DbgMachine) DeleteBreakpoint(address uintptr) error {
+
+	// 检查断点是否已经存在于 breakpoints 映射中
+	if _, exists := d.breakpoints[address]; !exists {
+		// 如果断点不存在，直接返回 nil，表示不需要再次删除
+		return nil
+	}
+	// 调用 WriteProcessMemory 函数将原始指令的机器码写入进程内存中的断点地址
+	_, err := WriteProcessMemory(d.process, address, []byte{d.breakpoints[address].original})
+	if err != nil {
+		// 如果写入过程中出现错误，返回该错误
+		return err
+	}
+
+	// 从 DbgMachine 的 breakpoints 映射中删除该断点信息
+	delete(d.breakpoints, address)
+	// 如果一切正常，返回 nil 表示删除断点成功
+	return nil
+}
+
+// 调试器相关常量定义
+const (
+	INFINITE                   = 0xFFFFFFFF // 无限等待
+	EXCEPTION_DEBUG_EVENT      = 0x00000001 // 异常调试事件
+	CREATE_PROCESS_DEBUG_EVENT = 0x00000003 // 进程创建事件
+	EXIT_PROCESS_DEBUG_EVENT   = 0x00000005 // 进程退出事件
+	CREATE_THREAD_DEBUG_EVENT  = 0x00000002 // 线程创建事件
+	LOAD_DLL_DEBUG_EVENT       = 0x00000006 // DLL加载事件
+)
+
+// DEBUG_EVENT 调试事件结构体
+type DEBUG_EVENT struct {
+	DebugEventCode uint32    // 调试事件类型 (4字节)
+	ProcessId      uint32    // 进程ID (4字节)
+	ThreadId       uint32    // 线程ID (4字节)
+	_              [4]byte   // 对齐填充 (4字节)
+	u              [168]byte // 原始字节缓冲区
+}
+
+// 包含调试器可以使用的异常信息
+type _EXCEPTION_DEBUG_INFO struct {
+	ExceptionRecord EXCEPTION_RECORD
+	dwFirstChance   uint32
+}
+
+// 为结构体 _EXCEPTION_DEBUG_INFO 和它的指针起别名
+type EXCEPTION_DEBUG_INFO = _EXCEPTION_DEBUG_INFO
+type LPEXCEPTION_DEBUG_INFO = *_EXCEPTION_DEBUG_INFO
+
+// CREATE_THREAD_DEBUG_INFO 线程创建调试信息，包含线程创建时的相关信息
+type CREATE_THREAD_DEBUG_INFO struct {
+	hThread           syscall.Handle // 新创建线程的句柄
+	lpThreadLocalBase uintptr        // 线程局部存储的基地址
+	lpStartAddress    uintptr        // 线程的实际入口点地址
+}
+
+// EXIT_THREAD_DEBUG_INFO 线程退出调试信息，包含线程退出时的相关信息
+type EXIT_THREAD_DEBUG_INFO struct {
+	dwExitCode uint32 // 线程退出代码
+}
+
+// EXIT_PROCESS_DEBUG_INFO 进程退出调试信息，包含进程退出时的相关信息
+type EXIT_PROCESS_DEBUG_INFO struct {
+	dwExitCode uint32 // 进程退出代码
+}
+
+// LOAD_DLL_DEBUG_INFO DLL加载调试信息，包含DLL加载时的相关信息
+type LOAD_DLL_DEBUG_INFO struct {
+	hFile                 syscall.Handle // DLL文件句柄
+	lpBaseOfDll           uintptr        // DLL映像的基地址
+	dwDebugInfoFileOffset uint32         // 调试信息文件的偏移量
+	nDebugInfoSize        uint32         // 调试信息的大小
+	lpImageName           uintptr        // DLL映像名称的指针
+	fUnicode              uint16         // 表示映像名称是否为Unicode编码
+}
+
+// UNLOAD_DLL_DEBUG_INFO DLL卸载调试信息，包含DLL卸载时的相关信息
+type UNLOAD_DLL_DEBUG_INFO struct {
+	lpBaseOfDll uintptr // DLL映像的基地址
+}
+
+// OUTPUT_DEBUG_STRING_INFO 调试输出字符串信息，包含调试输出字符串时的相关信息
+type OUTPUT_DEBUG_STRING_INFO struct {
+	lpDebugStringData  uintptr // 调试输出字符串的指针
+	fUnicode           uint16  // 表示字符串是否为Unicode编码
+	nDebugStringLength uint16  // 调试输出字符串的长度
+}
+
+// RIP_INFO RIP调试信息，包含RIP调试时的相关信息
+type RIP_INFO struct {
+	dwError uint32 // RIP错误代码
+	dwType  uint32 // RIP调试信息类型
+}
+
+// 定义一个泛型函数，用于获取DEBUG_EVENT结构体中的联合字段
+// 该函数接收一个DEBUG_EVENT 指针类型的参数e，并返回一个泛型类型T的值
+// 通过unsafe.Pointer将DEBUG_EVENT结构体中的u字段（原始字节缓冲区）转换为泛型类型T的指针
+// 然后解引用该指针，返回T类型的值
+// 这样可以方便地从DEBUG_EVENT结构体中提取不同类型的联合字段数据
+func GetUnion[T any](e *DEBUG_EVENT) T {
+	return *(*T)(unsafe.Pointer(&(e.u)))
+}
+
+// EXCEPTION_RECORD 异常记录，用于存储异常的详细信息
+type EXCEPTION_RECORD struct {
+	// 异常的代码，用于标识不同类型的异常
+	ExceptionCode uint32
+	// 异常的标志，提供关于异常的额外信息
+	ExceptionFlags uint32
+	// 指向另一个异常记录的指针，用于嵌套异常
+	ExceptionRecord *EXCEPTION_RECORD
+	// 异常发生时的处理器状态
+	ExceptionAddress uintptr
+	// 异常的编号，用于标识异常的类型
+	NumberParameters uint32
+	// 异常的参数数组，用于存储异常的相关数据
+	ParameterArray [15]uintptr
+}
+
+// CREATE_PROCESS_DEBUG_INFO 进程创建调试信息，包含进程创建时的相关信息
+type CREATE_PROCESS_DEBUG_INFO struct {
+	// 进程创建时使用的文件句柄
+	hFile syscall.Handle
+	// 新创建进程的句柄
+	hProcess syscall.Handle
+	// 新创建线程的句柄
+	hThread syscall.Handle
+	// 进程映像的基地址
+	lpBaseOfImage uintptr
+	// 调试信息文件的偏移量
+	dwDebugInfoFileOffset uint32
+	// 调试信息的大小
+	nDebugInfoSize uint32
+	// 线程局部存储的基地址
+	lpThreadLocalBase uintptr
+	// 进程的实际入口点地址
+	lpStartAddress uintptr
+	// 进程映像名称的指针
+	lpImageName uintptr
+	// 表示映像名称是否为Unicode编码
+	fUnicode uint16
+}
+
+// 新增 OpenThread 封装
+func OpenThread(desiredAccess uint32, inheritHandle bool, threadId uint32) (syscall.Handle, error) {
+	modkernel32 := syscall.NewLazyDLL("kernel32.dll")
+	procOpenThread := modkernel32.NewProc("OpenThread")
+
+	var inherit uint32 = 0
+	if inheritHandle {
+		inherit = 1
+	}
+
+	r0, _, e1 := procOpenThread.Call(
+		uintptr(desiredAccess),
+		uintptr(inherit),
+		uintptr(threadId),
+	)
+	if r0 == 0 {
+		return 0, e1
+	}
+	return syscall.Handle(r0), nil
+}
+
+func (d *DbgMachine) Maketextdata() error {
+	context, err := GetThreadContext(d.thread)
+	if err != nil {
+		fmt.Println("获取线程上下文失败:", err)
+		return err
+	}
+	rip := context.Rip
+	// 读取内存中的指令
+	bytedata, err := ReadProcessMemory(d.process, uintptr(rip), 100)
+	if err != nil {
+		fmt.Println("读取内存失败:", err)
+		return err
+	}
+
+	data := DisassembleRange(bytedata, rip, 100)
+
+	for _, directive := range *data {
+		d.textdata[uintptr(directive.Address)] = &directive
+
+	}
+	return nil
+
+}
+
+// Run 启动调试器，进入调试循环。
+// 该函数会不断等待调试事件的发生，并根据事件类型进行相应的处理。
+// 如果发生异常调试事件，则会打印异常信息，并停止调试器。
+// 如果发生进程退出事件，则会打印进程退出信息，并停止调试器。
+// 如果发生其他事件类型，则会打印事件类型，并继续等待下一个事件。
+// 该函数会一直运行，直到遇到异常或进程退出事件。
+func (d *DbgMachine) Run() {
+
 }
