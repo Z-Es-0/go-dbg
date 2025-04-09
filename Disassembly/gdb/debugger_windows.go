@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 21:49:22
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-09 21:45:44
+ * @LastEditTime: 2025-04-10 00:25:27
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -23,6 +23,9 @@ const (
 	// 调试器可以通过处理这些事件来监控和控制被调试进程的执行。
 	DEBUG_PROCESS                           = 0x00000001
 	EXCEPTION_GUARD_PAGE                    = 0x80000001 //保护页异常
+	EXCEPTION_IN_PAGE_ERROR                 = 0x80000006 //页错误异常
+	EXCEPTION_ILLEGAL_INSTRUCTION           = 0xC000008C //非法指令异常
+	EXCEPTION_PRIV_INSTRUCTION              = 0xC0000096 //特权指令异常
 	EXCEPTION_BREAKPOINT_WITH_CODE_CHANGE   = 0x80010004 //代码改变的断点异常
 	EXCEPTION_DATATYPE_MISALIGNMENT         = 0x80000002 //数据类型对齐异常
 	EXCEPTION_NONCONTINUABLE_EXCEPTION      = 0xC000000D //不可继续的异常
@@ -535,4 +538,45 @@ func WaitForDebug(debugEvent *DEBUG_EVENT) (*DEBUG_EVENT, error) {
 		return nil, err
 	}
 	return debugEvent, nil
+}
+
+func PrintContext(ctx *CONTEXT) {
+	fmt.Printf("-------- 寄存器: ------ \n")
+	fmt.Printf("Rip: 0x%X\n", ctx.Rip)
+	fmt.Printf("Rax: 0x%X\n", ctx.Rax)
+	fmt.Printf("Rcx: 0x%X\n", ctx.Rcx)
+	fmt.Printf("Rdx: 0x%X\n", ctx.Rdx)
+	fmt.Printf("Rbx: 0x%X\n", ctx.Rbx)
+	fmt.Printf("Rsp: 0x%X\n", ctx.Rsp)
+	fmt.Printf("Rbp: 0x%X\n", ctx.Rbp)
+	fmt.Printf("Rsi: 0x%X\n", ctx.Rsi)
+	fmt.Printf("Rdi: 0x%X\n", ctx.Rdi)
+	fmt.Printf("R8: 0x%X\n", ctx.R8)
+	fmt.Printf("R9: 0x%X\n", ctx.R9)
+	fmt.Printf("R10: 0x%X\n", ctx.R10)
+	fmt.Printf("R11: 0x%X\n", ctx.R11)
+	fmt.Printf("R12: 0x%X\n", ctx.R12)
+	fmt.Printf("R13: 0x%X\n", ctx.R13)
+	fmt.Printf("R14: 0x%X\n", ctx.R14)
+	fmt.Printf("R15: 0x%X\n\n", ctx.R15)
+	fmt.Printf("-------- 段寄存器: ------ \n")
+	fmt.Printf("SegCs: 0x%X\n", ctx.SegCs)
+	fmt.Printf("SegDs: 0x%X\n", ctx.SegDs)
+	fmt.Printf("SegEs: 0x%X\n", ctx.SegEs)
+	fmt.Printf("SegCs: 0x%X\n\n", ctx.SegCs)
+	//fmt.Printf("EFlags: 0x%X\n", ctx.EFlags)
+	// fmt.Printf("FltSave: 0x%X\n", ctx.FltSave())
+	fmt.Printf("-------- 标志寄存器: ------ \n")
+	fmt.Printf("CF: %v\n", ctx.GetCF())
+	fmt.Printf("ZF: %v\n", ctx.GetZF())
+	fmt.Printf("SF: %v\n", ctx.GetSF())
+	fmt.Printf("OF: %v\n", ctx.GetOF())
+	fmt.Printf("PF: %v\n", ctx.GetPF())
+	fmt.Printf("AF: %v\n", ctx.GetAF())
+	fmt.Printf("CF: %v\n", ctx.GetCF())
+	fmt.Printf("DF: %v\n", ctx.GetDF())
+	fmt.Printf("IF: %v\n", ctx.GetIF())
+	fmt.Printf("TF: %v\n", ctx.GetTF())
+	fmt.Printf("IF: %v\n\n", ctx.GetIF())
+	// 可以继续添加其他标志寄存器的打印
 }

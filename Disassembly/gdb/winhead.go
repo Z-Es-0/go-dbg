@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-04-03 14:47:50
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-09 22:26:25
+ * @LastEditTime: 2025-04-10 02:17:58
  * @FilePath: \ZesOJ\Disassembly\gdb\winhead.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -197,100 +197,6 @@ func (c *CONTEXT) GetOF() bool {
 	return c.EFlags&OF != 0
 }
 
-// Directive 反汇编指令结构体
-type Directive struct {
-	Length   uint32 // 指令长度
-	Address  uint64 // 指令地址
-	HexCodes []byte // 机器码
-	Armcode  string // 汇编指令
-	Comment  string // 注释
-	//breakpoint bool // 是否设置断点
-}
-
-// Dbgbreak 增加原始字节字段
-type Dbgbreak struct {
-	address  uintptr
-	original byte // 新增：保存被替换的原始字节
-	rawcode  *Directive
-}
-
-type DbgMachine struct {
-	process syscall.Handle // 进程句柄
-
-	thread syscall.Handle // 线程句柄
-	// 存储所有断点的切片
-	breakpoints map[uintptr]*Dbgbreak
-
-	textdata map[uintptr]*Directive // 存储所有指令的映射，key 为指令首地址，value 为指令结构体指针
-}
-
-// SetBreakpoint 为指定的指令设置断点。
-// 该函数接收一个 uintptr 类型的参数，代表要设置断点的指令地址。
-// 如果指令为空，则返回错误。
-// 如果断点已经存在，则不做任何操作。
-// 该函数会将断点信息添加到 DbgMachine 的 breakpoints 映射中，并将断点地址处的内存写入 0xCC（INT 3 指令）。
-func (d *DbgMachine) SetBreakpoint(address uintptr) error {
-	if d.process == 0 || d.thread == 0 {
-		return fmt.Errorf("无效的调试器句柄")
-	}
-
-	// 检查断点是否已经存在于 breakpoints 映射中
-	if _, exists := d.breakpoints[uintptr(address)]; exists {
-		// 如果断点已经存在，直接返回 nil，表示不需要再次设置
-		return nil
-	}
-	// 读取原始指令的机器码
-	//oldCode := make([]byte, rawcode.Length)
-	origBytes, err := ReadProcessMemory(d.process, uintptr(address), 1)
-
-	if err != nil {
-		return err
-	}
-
-	// 创建断点结构体
-	breakpoint := &Dbgbreak{
-		address:  address,
-		original: origBytes[0],
-		rawcode:  d.textdata[address],
-	}
-
-	// 写入 INT 3 指令 (0xCC)
-	int3Code := []byte{0xCC}
-	_, err = WriteProcessMemory(d.process, address, int3Code)
-	if err == nil {
-		// 将断点信息添加到 DbgMachine 的 breakpoints 映射中
-		d.breakpoints[address] = breakpoint
-		return nil
-	}
-	return err
-
-}
-
-// DeleteBreakpoint 为指定的指令删除断点。
-// 该函数接收一个 *Directive 类型的参数，代表要删除断点的指令。
-// 如果指令为空，则返回错误。
-// 如果断点不存在，则不做任何操作。
-// 该函数会将断点地址处的内存恢复为原始指令的机器码，并从 DbgMachine 的 breakpoints 映射中删除该断点信息。
-func (d *DbgMachine) DeleteBreakpoint(address uintptr) error {
-
-	// 检查断点是否已经存在于 breakpoints 映射中
-	if _, exists := d.breakpoints[address]; !exists {
-		// 如果断点不存在，直接返回 nil，表示不需要再次删除
-		return nil
-	}
-	// 调用 WriteProcessMemory 函数将原始指令的机器码写入进程内存中的断点地址
-	_, err := WriteProcessMemory(d.process, address, []byte{d.breakpoints[address].original})
-	if err != nil {
-		// 如果写入过程中出现错误，返回该错误
-		return err
-	}
-
-	// 从 DbgMachine 的 breakpoints 映射中删除该断点信息
-	delete(d.breakpoints, address)
-	// 如果一切正常，返回 nil 表示删除断点成功
-	return nil
-}
-
 // 调试器相关常量定义
 const (
 	INFINITE                   = 0xFFFFFFFF // 无限等待
@@ -308,6 +214,15 @@ type DEBUG_EVENT struct {
 	ThreadId       uint32    // 线程ID (4字节)
 	_              [4]byte   // 对齐填充 (4字节)
 	u              [168]byte // 原始字节缓冲区
+}
+
+// 定义一个泛型函数，用于获取DEBUG_EVENT结构体中的联合字段
+// 该函数接收一个DEBUG_EVENT 指针类型的参数e，并返回一个泛型类型T的值
+// 通过unsafe.Pointer将DEBUG_EVENT结构体中的u字段（原始字节缓冲区）转换为泛型类型T的指针
+// 然后解引用该指针，返回T类型的值
+// 这样可以方便地从DEBUG_EVENT结构体中提取不同类型的联合字段数据
+func GetUnion[T any](e *DEBUG_EVENT) T {
+	return *(*T)(unsafe.Pointer(&(e.u)))
 }
 
 // 包含调试器可以使用的异常信息
@@ -363,15 +278,6 @@ type OUTPUT_DEBUG_STRING_INFO struct {
 type RIP_INFO struct {
 	dwError uint32 // RIP错误代码
 	dwType  uint32 // RIP调试信息类型
-}
-
-// 定义一个泛型函数，用于获取DEBUG_EVENT结构体中的联合字段
-// 该函数接收一个DEBUG_EVENT 指针类型的参数e，并返回一个泛型类型T的值
-// 通过unsafe.Pointer将DEBUG_EVENT结构体中的u字段（原始字节缓冲区）转换为泛型类型T的指针
-// 然后解引用该指针，返回T类型的值
-// 这样可以方便地从DEBUG_EVENT结构体中提取不同类型的联合字段数据
-func GetUnion[T any](e *DEBUG_EVENT) T {
-	return *(*T)(unsafe.Pointer(&(e.u)))
 }
 
 // EXCEPTION_RECORD 异常记录，用于存储异常的详细信息
@@ -433,38 +339,4 @@ func OpenThread(desiredAccess uint32, inheritHandle bool, threadId uint32) (sysc
 		return 0, e1
 	}
 	return syscall.Handle(r0), nil
-}
-
-func (d *DbgMachine) Maketextdata() error {
-	context, err := GetThreadContext(d.thread)
-	if err != nil {
-		fmt.Println("获取线程上下文失败:", err)
-		return err
-	}
-	rip := context.Rip
-	// 读取内存中的指令
-	bytedata, err := ReadProcessMemory(d.process, uintptr(rip), 100)
-	if err != nil {
-		fmt.Println("读取内存失败:", err)
-		return err
-	}
-
-	data := DisassembleRange(bytedata, rip, 100)
-
-	for _, directive := range *data {
-		d.textdata[uintptr(directive.Address)] = &directive
-
-	}
-	return nil
-
-}
-
-// Run 启动调试器，进入调试循环。
-// 该函数会不断等待调试事件的发生，并根据事件类型进行相应的处理。
-// 如果发生异常调试事件，则会打印异常信息，并停止调试器。
-// 如果发生进程退出事件，则会打印进程退出信息，并停止调试器。
-// 如果发生其他事件类型，则会打印事件类型，并继续等待下一个事件。
-// 该函数会一直运行，直到遇到异常或进程退出事件。
-func (d *DbgMachine) Run() {
-
 }

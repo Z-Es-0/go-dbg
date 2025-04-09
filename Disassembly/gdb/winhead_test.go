@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-04-03 21:03:27
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-09 22:27:01
+ * @LastEditTime: 2025-04-10 01:40:51
  * @FilePath: \ZesOJ\Disassembly\gdb\winhead_test.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -134,10 +134,9 @@ func TestBreakpointWorkflow(t *testing.T) {
 		textdata:    make(map[uintptr]*Directive),
 	}
 
-	// 设置断点
 	err = debugmashin.Maketextdata()
 	if err != nil {
-		t.Fatalf("设置断点失败: %v", err)
+		t.Fatalf("失败: %v", err)
 	}
 
 	threadID, err := GetThreadID(thread)
@@ -169,6 +168,7 @@ func TestBreakpointWorkflow(t *testing.T) {
 
 		case EXCEPTION_DEBUG_EVENT:
 			{
+				_ = debugmashin.Maketextdata()
 
 				switch (GetUnion[EXCEPTION_DEBUG_INFO](debugEvent)).ExceptionRecord.ExceptionCode {
 
@@ -178,7 +178,7 @@ func TestBreakpointWorkflow(t *testing.T) {
 					fmt.Println("断点触发")
 					DoEXCEPTION_BREAKPOINT(debugmashin, debugEvent)
 
-					debugmashin.DeleteBreakpoint(0x00007FFFD102AF1E)
+					// debugmashin.DeleteBreakpoint(0x00007FFFD102AF1E)
 
 				case EXCEPTION_SINGLE_STEP:
 					fmt.Println("单步执行异常") // 单步执行异常
@@ -202,12 +202,12 @@ func TestBreakpointWorkflow(t *testing.T) {
 
 		case CREATE_THREAD_DEBUG_EVENT:
 			fmt.Println("线程创建")
-			context, _ := GetThreadContext(debugmashin.thread)
-			PrintContext(context)
+			// context, _ := GetThreadContext(debugmashin.thread)
+			// PrintContext(context)
 		case LOAD_DLL_DEBUG_EVENT:
 			fmt.Println("DLL加载")
-			context, _ := GetThreadContext(debugmashin.thread)
-			PrintContext(context)
+			// context, _ := GetThreadContext(debugmashin.thread)
+			// PrintContext(context)
 
 		case EXIT_PROCESS_DEBUG_EVENT:
 			t.Log("目标进程正常退出")
@@ -225,18 +225,14 @@ func TestBreakpointWorkflow(t *testing.T) {
 }
 
 func DoEXCEPTION_BREAKPOINT(debugmashin *DbgMachine, DebugEv *DEBUG_EVENT) {
-	// 处理断点事件
-	fmt.Println("等会写")
-}
+	// 修改原代码中错误使用 := 声明变量的问题，改为调用方法并检查错误
+	err := debugmashin.Maketextdata()
+	if err != nil {
+		// 处理错误，这里只是简单打印错误信息，实际应用中可根据需求处理
+		fmt.Printf("Maketextdata 方法调用出错: %v\n", err)
+	}
 
-func PrintContext(ctx *CONTEXT) {
-	fmt.Printf("Rip: 0x%X\n", ctx.Rip)
-	fmt.Printf("Rax: 0x%X\n", ctx.Rax)
-	fmt.Printf("Rcx: 0x%X\n", ctx.Rcx)
-	fmt.Printf("Rdx: 0x%X\n", ctx.Rdx)
-	fmt.Printf("Rbx: 0x%X\n", ctx.Rbx)
-	fmt.Printf("Rsp: 0x%X\n", ctx.Rsp)
-	fmt.Printf("Rbp: 0x%X\n", ctx.Rbp)
-	fmt.Printf("Rsi: 0x%X\n", ctx.Rsi)
-	fmt.Printf("Rdi: 0x%X\n", ctx.Rdi)
+	// 处理断点事件
+	context, _ := GetThreadContext(debugmashin.thread)
+	PrintContext(context)
 }
