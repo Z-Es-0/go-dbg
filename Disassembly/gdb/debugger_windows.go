@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 21:49:22
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-10 00:25:27
+ * @LastEditTime: 2025-04-13 20:56:41
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -516,6 +516,22 @@ func ContinueDebugEvent(processId, threadId uint32, continueStatus uint32) error
 		return err
 	}
 	return nil
+}
+
+// GetRip 函数用于获取当前线程的指令指针寄存器（RIP）。
+// 返回值:
+//   - 当前线程的 RIP 寄存器值。
+func GetRip() uint64 {
+	var ctx CONTEXT
+	ctx.ContextFlags = CONTEXT_FULL
+	ret, _, err := procGetThreadContext.Call(
+		uintptr(0),                    // 线程句柄
+		uintptr(unsafe.Pointer(&ctx)), // 指向 CONTEXT 结构体的指针
+	)
+	if ret == 0 {
+		panic(err)
+	}
+	return ctx.Rip
 }
 
 // WaitForDebug 函数用于等待指定进程的调试事件。
