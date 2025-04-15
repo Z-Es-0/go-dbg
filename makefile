@@ -1,8 +1,10 @@
 build:
-	go build -o bin\debug.exe sever\main.go
+	go build -o bin\debug.exe main\main.go
+
+
+run:
+	go run main\main.go
 
 test:
-	go build -o bin\debug.exe sever\main.go
-	./bin/debug.exe sever/test.exe
 	
 	

@@ -3,7 +3,6 @@ package gdb
 import (
 	"fmt"
 	"syscall"
-	"time"
 )
 
 // Directive 反汇编指令结构体
@@ -204,7 +203,7 @@ func (d *DbgMachine) Run() {
 		ProcessId:      processID,
 	}
 
-	time.Sleep(1 * time.Second)
+	//time.Sleep(5 * time.Second)
 	// 调试事件循环
 	d.ShellMain()
 
