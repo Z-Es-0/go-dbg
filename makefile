@@ -6,5 +6,6 @@ run:
 	go run main\main.go
 
 test:
+	./bin\debug.exe sever\test.exe
 	
 	
