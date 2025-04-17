@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-21 21:49:22
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-13 20:56:41
+ * @LastEditTime: 2025-04-18 02:50:08
  * @FilePath: \ZesOJ\Disassembly\gdb\debugger_windows.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -542,6 +542,7 @@ func GetRip() uint64 {
 //   - 指向 DEBUG_EVENT 结构体的指针，包含接收到的调试事件信息。
 //   - 错误信息，如果等待过程中出现错误。
 func WaitForDebug(debugEvent *DEBUG_EVENT) (*DEBUG_EVENT, error) {
+
 	// 等待调试事件（Windows API调用）
 	// 第一个参数是指向 DEBUG_EVENT 结构体的指针，用于接收调试事件信息
 	// 第二个参数是等待时间，使用 INFINITE 表示无限期等待

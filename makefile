@@ -3,7 +3,8 @@ build:
 
 
 run:
-	go run main\main.go
+	go build -o bin\debug.exe main\main.go
+	.\bin\debug.exe "E:\ZesOJ\sever\test.exe"
 
 test:
 	./bin\debug.exe sever\test.exe

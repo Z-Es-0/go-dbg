@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-03-12 13:35:04
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-15 14:59:15
+ * @LastEditTime: 2025-04-18 03:40:57
  * @FilePath: \ZesOJ\Disassembly\sever\main.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -13,6 +13,7 @@ import (
 
 	"fmt"
 	readpe "zesdbg/Disassembly/ReadPE"
+	"zesdbg/Disassembly/analyse"
 	"zesdbg/Disassembly/gdb"
 )
 
@@ -30,6 +31,8 @@ func main() {
 	}
 
 	readpe.PrintPEInfo(pe)
+
+	analyse.PrintStr(filePath)
 
 	fmt.Print("\n\n\n")
 	//start := pe.OptionalHeader32.AddressOfEntryPoint

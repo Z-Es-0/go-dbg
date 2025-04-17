@@ -2,7 +2,7 @@
  * @Author: Z-Es-0 zes18642300628@qq.com
  * @Date: 2025-04-10 00:52:34
  * @LastEditors: Z-Es-0 zes18642300628@qq.com
- * @LastEditTime: 2025-04-15 16:49:45
+ * @LastEditTime: 2025-04-18 04:01:32
  * @FilePath: \ZesOJ\Disassembly\gdb\usershell.go
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"zesdbg/Disassembly/analyse"
 )
 
 func (d *DbgMachine) ShellMain() {
@@ -75,10 +76,33 @@ func (d *DbgMachine) Shellgo() bool {
 		fmt.Println("quit, q: 退出程序")
 		fmt.Println("list, l: 列出断点")
 		fmt.Println("help, h: 查看帮助")
+		fmt.Println("s <Regular>: 查询硬编码字符串(正则表达式)")
 
 	default:
 		op := cmd[0:1]
 		switch op {
+
+		case "s":
+			if len(cmd) > 3 && (cmd[0] == 's') {
+				var regexPattern string
+
+				regexPattern = strings.TrimSpace(cmd[2:])
+
+				// 这里可以添加使用正则表达式的逻辑
+				fmt.Printf("提取的正则表达式: %s\n", regexPattern)
+
+				lst, err := analyse.SelectStr(d.str, regexPattern)
+				if err != nil {
+					fmt.Println(err)
+					return true
+				}
+				for _, v := range lst {
+					fmt.Printf("字符串: %-20s, 地址: 0x%X ,所属段：%s \n", v.Str, v.Addr, v.Segment)
+				}
+
+				return true
+			}
+
 		case "b":
 
 			if len(cmd) > 5 && (cmd[:4] == "break" || cmd[0] == 'b') {

@@ -3,6 +3,7 @@ package gdb
 import (
 	"fmt"
 	"syscall"
+	"zesdbg/Disassembly/analyse"
 )
 
 // Directive 反汇编指令结构体
@@ -26,6 +27,9 @@ type DbgMachine struct {
 	process syscall.Handle // 进程句柄
 
 	thread syscall.Handle // 线程句柄
+
+	str *[]analyse.StrDate // 存储所有字符串的切片
+
 	// 存储所有断点的切片
 	breakpoints map[uintptr]*Dbgbreak
 
@@ -203,14 +207,30 @@ func (d *DbgMachine) Run() {
 		ProcessId:      processID,
 	}
 
+	fmt.Printf("调试器已启动，PID = %d \n", debugEvent.ProcessId)
 	//time.Sleep(5 * time.Second)
 	// 调试事件循环
 	d.ShellMain()
+	if debugEvent.ProcessId == 0 || debugEvent.ThreadId == 0 {
+		panic("无效的调试器句柄")
+	}
+
+	// 获取进程ID和线程ID
+	debugEvent.ProcessId, _ = GetProcessID(d.process)
+	debugEvent.ThreadId, _ = GetThreadID(d.thread)
 
 	for {
+		if debugEvent.ProcessId == 0 || debugEvent.ThreadId == 0 {
+			panic("无效的调试器句柄")
+		}
+
+		// 获取进程ID和线程ID
+		debugEvent.ProcessId, _ = GetProcessID(d.process)
+		debugEvent.ThreadId, _ = GetThreadID(d.thread)
+
 		debugEvent, err = WaitForDebug(debugEvent)
 		if err != nil {
-			fmt.Println("等待调试事件失败:", err)
+			fmt.Println("err in 213 ! 等待调试事件失败:", err)
 		}
 
 		switch debugEvent.DebugEventCode {
@@ -269,6 +289,13 @@ func (d *DbgMachine) Run() {
 				}
 
 				d.ShellMain()
+				if debugEvent.ProcessId == 0 || debugEvent.ThreadId == 0 {
+					panic("无效的调试器句柄")
+				}
+
+				// 获取进程ID和线程ID
+				debugEvent.ProcessId, _ = GetProcessID(d.process)
+				debugEvent.ThreadId, _ = GetThreadID(d.thread)
 			}
 
 		case CREATE_THREAD_DEBUG_EVENT:
@@ -285,6 +312,13 @@ func (d *DbgMachine) Run() {
 
 		}
 
+		if debugEvent.ProcessId == 0 || debugEvent.ThreadId == 0 {
+			panic("无效的调试器句柄")
+		}
+
+		// 获取进程ID和线程ID
+		debugEvent.ProcessId, _ = GetProcessID(d.process)
+		debugEvent.ThreadId, _ = GetThreadID(d.thread)
 		ContinueDebugEvent(
 			debugEvent.ProcessId,
 			debugEvent.ThreadId,
